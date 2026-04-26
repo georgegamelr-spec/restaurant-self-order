@@ -50,6 +50,7 @@ function OrderPage() {
   const [cart, setCart] = useState<OrderItem[]>([])
   const [orderId, setOrderId] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [submittedItems, setSubmittedItems] = useState<Record<string, number>>({}) // id → min qty (can't go below)
   const [orderStatus, setOrderStatus] = useState<string>('submitted')
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
@@ -63,6 +64,11 @@ function OrderPage() {
     setCart(saved.items)
     setOrderId(saved.orderId)
     setSubmitted(saved.submitted)
+    if (saved.submitted && saved.items.length > 0) {
+      const mins: Record<string, number> = {}
+      saved.items.forEach((i: OrderItem) => { mins[i.menu_item_id] = i.qty })
+      setSubmittedItems(mins)
+    }
   }, [table])
 
   useEffect(() => {
@@ -97,7 +103,7 @@ function OrderPage() {
   }, [table, orderId, submitted])
 
   const removeItem = useCallback((id: string) => {
-    if (submitted && !addingMore) return // 🔒 locked after submit, but allow during addingMore
+    if (submitted && submittedItems[id] !== undefined) return // 🔒 can't remove submitted items
     setCart(prev => {
       const updated = prev.filter(i => i.menu_item_id !== id)
       saveOrder(table, { items: updated, orderId, submitted: false })
@@ -106,13 +112,20 @@ function OrderPage() {
   }, [table, orderId])
 
   const changeQty = useCallback((id: string, delta: number) => {
-    if (submitted && !addingMore && delta < 0) return // 🔒 no decrease after submit
+    // 🔒 can't go below original submitted quantity
+    if (submitted && delta < 0) {
+      const minQty = submittedItems[id]
+      if (minQty !== undefined) {
+        const currentQty = cart.find(i => i.menu_item_id === id)?.qty ?? 0
+        if (currentQty <= minQty) return
+      }
+    }
     setCart(prev => {
       const updated = prev.map(i => i.menu_item_id === id ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0)
       saveOrder(table, { items: updated, orderId, submitted })
       return updated
     })
-  }, [table, orderId, submitted, addingMore])
+  }, [table, orderId, submitted, submittedItems, cart])
 
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0)
   const tax = subtotal * 0.1
@@ -136,6 +149,10 @@ function OrderPage() {
       setOrderStatus('submitted')
       setShowCart(false)
       saveOrder(table, { items: cart, orderId: newOrderId, submitted: true })
+      // Lock current quantities as minimums
+      const mins: Record<string, number> = {}
+      cart.forEach(i => { mins[i.menu_item_id] = i.qty })
+      setSubmittedItems(mins)
       showToast('🎉 تم إرسال طلبك!')
     } catch (e: unknown) {
       showToast('❌ خطأ: ' + (e as Error).message)
@@ -160,6 +177,10 @@ function OrderPage() {
       if (!r.ok) throw new Error(d.error || 'Error')
       setCart(d.order!.items)
       saveOrder(table, { items: d.order!.items, orderId, submitted: true })
+      // Update minimums to include newly added items
+      const newMins: Record<string, number> = {}
+      d.order!.items.forEach((i: OrderItem) => { newMins[i.menu_item_id] = i.qty })
+      setSubmittedItems(newMins)
       setAddingMore(false)
       showToast('✅ تمت الإضافة!')
     } catch (e: unknown) {
@@ -261,7 +282,7 @@ function OrderPage() {
               <div className="flex-shrink-0">
                 {inCart ? (
                   <div className="flex items-center gap-2">
-                    <button onClick={() => changeQty(item.id, -1)} disabled={submitted && !addingMore}
+                    <button onClick={() => changeQty(item.id, -1)} disabled={submitted && (cart.find(c=>c.menu_item_id===item.id)?.qty ?? 0) <= (submittedItems[item.id] ?? 0)}
                       className="w-8 h-8 rounded-full bg-[#2a2927] border border-[#3a3936] text-white font-bold disabled:opacity-30 flex items-center justify-center">−</button>
                     <span className="text-white font-black w-5 text-center">{inCart.qty}</span>
                     <button onClick={() => addItem(item)} className="w-8 h-8 rounded-full bg-[#e74c3c] text-white font-bold flex items-center justify-center">+</button>
@@ -298,10 +319,10 @@ function OrderPage() {
                   <div className="text-[#f39c12] text-xs font-bold">${(item.price * item.qty).toFixed(2)}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => changeQty(item.menu_item_id, -1)} disabled={submitted && !addingMore} className="w-7 h-7 rounded-full bg-[#2a2927] border border-[#3a3936] text-white flex items-center justify-center text-sm disabled:opacity-20">−</button>
+                  <button onClick={() => changeQty(item.menu_item_id, -1)} disabled={submitted && item.qty <= (submittedItems[item.menu_item_id] ?? 0)} className="w-7 h-7 rounded-full bg-[#2a2927] border border-[#3a3936] text-white flex items-center justify-center text-sm disabled:opacity-20">−</button>
                   <span className="text-white font-black w-4 text-center">{item.qty}</span>
                   <button onClick={() => changeQty(item.menu_item_id, 1)} className="w-7 h-7 rounded-full bg-[#e74c3c] text-white flex items-center justify-center text-sm">+</button>
-                  {(!submitted || addingMore) && <button onClick={() => removeItem(item.menu_item_id)} className="w-7 h-7 rounded-full bg-[#2a2927] text-[#8a8884] flex items-center justify-center text-xs mr-1">✕</button>}
+                  {(!submitted || submittedItems[item.menu_item_id] === undefined) && <button onClick={() => removeItem(item.menu_item_id)} className="w-7 h-7 rounded-full bg-[#2a2927] text-[#8a8884] flex items-center justify-center text-xs mr-1">✕</button>}
                 </div>
               </div>
             ))}
