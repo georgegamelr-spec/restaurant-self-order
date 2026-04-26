@@ -97,7 +97,7 @@ function OrderPage() {
   }, [table, orderId, submitted])
 
   const removeItem = useCallback((id: string) => {
-    if (submitted) return // 🔒 locked after submit
+    if (submitted && !addingMore) return // 🔒 locked after submit, but allow during addingMore
     setCart(prev => {
       const updated = prev.filter(i => i.menu_item_id !== id)
       saveOrder(table, { items: updated, orderId, submitted: false })
@@ -106,13 +106,13 @@ function OrderPage() {
   }, [table, orderId])
 
   const changeQty = useCallback((id: string, delta: number) => {
-    if (submitted && delta < 0) return // 🔒 no decrease after submit
+    if (submitted && !addingMore && delta < 0) return // 🔒 no decrease after submit
     setCart(prev => {
       const updated = prev.map(i => i.menu_item_id === id ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0)
       saveOrder(table, { items: updated, orderId, submitted })
       return updated
     })
-  }, [table, orderId, submitted])
+  }, [table, orderId, submitted, addingMore])
 
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0)
   const tax = subtotal * 0.1
@@ -298,10 +298,10 @@ function OrderPage() {
                   <div className="text-[#f39c12] text-xs font-bold">${(item.price * item.qty).toFixed(2)}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => changeQty(item.menu_item_id, -1)} disabled={submitted} className="w-7 h-7 rounded-full bg-[#2a2927] border border-[#3a3936] text-white flex items-center justify-center text-sm disabled:opacity-20">−</button>
+                  <button onClick={() => changeQty(item.menu_item_id, -1)} disabled={submitted && !addingMore} className="w-7 h-7 rounded-full bg-[#2a2927] border border-[#3a3936] text-white flex items-center justify-center text-sm disabled:opacity-20">−</button>
                   <span className="text-white font-black w-4 text-center">{item.qty}</span>
                   <button onClick={() => changeQty(item.menu_item_id, 1)} className="w-7 h-7 rounded-full bg-[#e74c3c] text-white flex items-center justify-center text-sm">+</button>
-                  {!submitted && <button onClick={() => removeItem(item.menu_item_id)} className="w-7 h-7 rounded-full bg-[#2a2927] text-[#8a8884] flex items-center justify-center text-xs mr-1">✕</button>}
+                  {(!submitted || addingMore) && <button onClick={() => removeItem(item.menu_item_id)} className="w-7 h-7 rounded-full bg-[#2a2927] text-[#8a8884] flex items-center justify-center text-xs mr-1">✕</button>}
                 </div>
               </div>
             ))}
