@@ -1,12 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Suspense } from 'react'
-import { MenuItem, OrderItem, Order } from '@/types'
+import { MenuItem, OrderItem } from '@/types'
 import { MENU_ITEMS, CATEGORIES } from '@/lib/menu'
 
-// ── helpers ──────────────────────────────────────────────
 function genSessionId() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
@@ -19,21 +17,22 @@ function getSession(table: string): string {
   return s
 }
 
-function getSavedOrder(table: string): { items: OrderItem[]; orderId: string | null; submitted: boolean } {
+interface SavedOrder { items: OrderItem[]; orderId: string | null; submitted: boolean }
+
+function getSavedOrder(table: string): SavedOrder {
   if (typeof window === 'undefined') return { items: [], orderId: null, submitted: false }
   try {
     const raw = sessionStorage.getItem(`order_${table}`)
-    if (raw) return JSON.parse(raw)
+    if (raw) return JSON.parse(raw) as SavedOrder
   } catch {}
   return { items: [], orderId: null, submitted: false }
 }
 
-function saveOrder(table: string, data: { items: OrderItem[]; orderId: string | null; submitted: boolean }) {
+function saveOrder(table: string, data: SavedOrder) {
   if (typeof window === 'undefined') return
   sessionStorage.setItem(`order_${table}`, JSON.stringify(data))
 }
 
-// ── status display ────────────────────────────────────────
 const STATUS_DISPLAY: Record<string, { ar: string; color: string; emoji: string }> = {
   submitted:  { ar: 'تم استلام طلبك',   color: 'text-[#f39c12]', emoji: '⏳' },
   preparing:  { ar: 'جارٍ التحضير',      color: 'text-[#3498db]', emoji: '👨‍🍳' },
@@ -41,7 +40,8 @@ const STATUS_DISPLAY: Record<string, { ar: string; color: string; emoji: string 
   done:       { ar: 'تم التسليم، شكراً', color: 'text-[#8a8884]', emoji: '🎉' },
 }
 
-// ── main component ────────────────────────────────────────
+interface OrderData { id: string; items: OrderItem[]; status: string; total: number; notes: string }
+
 function OrderPage() {
   const params = useSearchParams()
   const table = params.get('table') || '1'
@@ -56,9 +56,8 @@ function OrderPage() {
   const [showCart, setShowCart] = useState(false)
   const [addingMore, setAddingMore] = useState(false)
   const [toast, setToast] = useState('')
-  const pollRef = useRef<NodeJS.Timeout | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // restore session
   useEffect(() => {
     const saved = getSavedOrder(table)
     setCart(saved.items)
@@ -66,13 +65,12 @@ function OrderPage() {
     setSubmitted(saved.submitted)
   }, [table])
 
-  // poll order status after submit
   useEffect(() => {
     if (!orderId || !submitted) return
     const poll = async () => {
       try {
         const r = await fetch(`/api/orders/${orderId}`)
-        const d = await r.json()
+        const d = await r.json() as { order?: OrderData }
         if (d.order) setOrderStatus(d.order.status)
       } catch {}
     }
@@ -86,7 +84,6 @@ function OrderPage() {
     setTimeout(() => setToast(''), 2500)
   }
 
-  // add to cart
   const addItem = useCallback((item: MenuItem) => {
     setCart(prev => {
       const existing = prev.find(i => i.menu_item_id === item.id)
@@ -99,7 +96,6 @@ function OrderPage() {
     showToast(`✅ أُضيف: ${item.name_ar}`)
   }, [table, orderId, submitted])
 
-  // remove from cart (only before submit)
   const removeItem = useCallback((id: string) => {
     setCart(prev => {
       const updated = prev.filter(i => i.menu_item_id !== id)
@@ -110,8 +106,7 @@ function OrderPage() {
 
   const changeQty = useCallback((id: string, delta: number) => {
     setCart(prev => {
-      const updated = prev.map(i => i.menu_item_id === id ? { ...i, qty: i.qty + delta } : i)
-        .filter(i => i.qty > 0)
+      const updated = prev.map(i => i.menu_item_id === id ? { ...i, qty: i.qty + delta } : i).filter(i => i.qty > 0)
       saveOrder(table, { items: updated, orderId, submitted: false })
       return updated
     })
@@ -121,7 +116,6 @@ function OrderPage() {
   const tax = subtotal * 0.1
   const total = subtotal + tax
 
-  // SUBMIT ORDER
   const submitOrder = async () => {
     if (!cart.length) return
     setLoading(true)
@@ -132,28 +126,25 @@ function OrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ table_number: table, session_id, items: cart, notes }),
       })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error)
-      const newOrderId = d.order.id
+      const d = await r.json() as { order?: OrderData; error?: string }
+      if (!r.ok) throw new Error(d.error || 'Error')
+      const newOrderId = d.order!.id
       setOrderId(newOrderId)
       setSubmitted(true)
       setOrderStatus('submitted')
       setShowCart(false)
       saveOrder(table, { items: cart, orderId: newOrderId, submitted: true })
       showToast('🎉 تم إرسال طلبك!')
-    } catch (e: any) {
-      showToast('❌ خطأ: ' + e.message)
+    } catch (e: unknown) {
+      showToast('❌ خطأ: ' + (e as Error).message)
     }
     setLoading(false)
   }
 
-  // ADD MORE ITEMS after submit
   const submitAddMore = async () => {
     if (!addingMore || !orderId) return
-    const newItems = cart.filter(i => {
-      const saved = getSavedOrder(table)
-      return !saved.items.find((s: OrderItem) => s.menu_item_id === i.menu_item_id)
-    })
+    const saved = getSavedOrder(table)
+    const newItems = cart.filter(i => !saved.items.find((s: OrderItem) => s.menu_item_id === i.menu_item_id))
     if (!newItems.length) { setAddingMore(false); return }
     setLoading(true)
     try {
@@ -163,14 +154,14 @@ function OrderPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'add_items', items: newItems, session_id }),
       })
-      const d = await r.json()
-      if (!r.ok) throw new Error(d.error)
-      setCart(d.order.items)
-      saveOrder(table, { items: d.order.items, orderId, submitted: true })
+      const d = await r.json() as { order?: OrderData; error?: string }
+      if (!r.ok) throw new Error(d.error || 'Error')
+      setCart(d.order!.items)
+      saveOrder(table, { items: d.order!.items, orderId, submitted: true })
       setAddingMore(false)
       showToast('✅ تمت الإضافة!')
-    } catch (e: any) {
-      showToast('❌ خطأ: ' + e.message)
+    } catch (e: unknown) {
+      showToast('❌ خطأ: ' + (e as Error).message)
     }
     setLoading(false)
   }
@@ -178,12 +169,10 @@ function OrderPage() {
   const filteredItems = MENU_ITEMS.filter(i => i.category === activeCategory && i.available)
   const cartCount = cart.reduce((s, i) => s + i.qty, 0)
 
-  // ── SUBMITTED VIEW ──
   if (submitted && !addingMore) {
     const sd = STATUS_DISPLAY[orderStatus] || STATUS_DISPLAY.submitted
     return (
       <div className="min-h-dvh bg-[#0f0e0d] flex flex-col" dir="rtl">
-        {/* Header */}
         <div className="bg-[#1a1917] border-b border-[#2c2b29] px-4 py-3 flex items-center justify-between">
           <div>
             <div className="text-white font-black text-lg">طاولة {table}</div>
@@ -191,8 +180,6 @@ function OrderPage() {
           </div>
           <div className="text-2xl">{sd.emoji}</div>
         </div>
-
-        {/* Status Card */}
         <div className="p-4">
           <div className="bg-[#1a1917] border border-[#2c2b29] rounded-2xl p-5 text-center mb-4">
             <div className="text-5xl mb-3">{sd.emoji}</div>
@@ -201,15 +188,13 @@ function OrderPage() {
             <div className="flex justify-center gap-2 mt-3">
               {['submitted','preparing','ready','done'].map(s => (
                 <div key={s} className={`w-2 h-2 rounded-full transition-all ${
-                  s === orderStatus ? 'bg-[#e74c3c] scale-125' : 
+                  s === orderStatus ? 'bg-[#e74c3c] scale-125' :
                   ['submitted','preparing','ready','done'].indexOf(s) < ['submitted','preparing','ready','done'].indexOf(orderStatus)
                     ? 'bg-[#6daa45]' : 'bg-[#3a3936]'
                 }`} />
               ))}
             </div>
           </div>
-
-          {/* Order Summary */}
           <div className="bg-[#1a1917] border border-[#2c2b29] rounded-2xl p-4 mb-4">
             <div className="text-white font-bold mb-3 text-sm">ملخص طلبك</div>
             {cart.map(item => (
@@ -229,8 +214,6 @@ function OrderPage() {
               <span className="text-[#f39c12] font-black">${(cart.reduce((s,i)=>s+i.price*i.qty,0)*1.1).toFixed(2)}</span>
             </div>
           </div>
-
-          {/* Add more button */}
           {['submitted','preparing'].includes(orderStatus) && (
             <button onClick={() => setAddingMore(true)}
               className="w-full bg-[#1f1e1c] hover:bg-[#2a2927] border border-[#3a3936] text-white font-bold py-4 rounded-2xl transition-all text-sm">
@@ -238,60 +221,35 @@ function OrderPage() {
             </button>
           )}
         </div>
-
-        {toast && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#e8e6e1] text-[#0f0e0d] px-5 py-3 rounded-full font-bold text-sm z-50 shadow-xl animate-fade-up">
-            {toast}
-          </div>
-        )}
+        {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#e8e6e1] text-[#0f0e0d] px-5 py-3 rounded-full font-bold text-sm z-50 shadow-xl animate-fade-up">{toast}</div>}
       </div>
     )
   }
 
-  // ── ORDER / ADD MORE VIEW ──
   return (
     <div className="min-h-dvh bg-[#0f0e0d] flex flex-col pb-24" dir="rtl">
-      {/* Header */}
       <div className="bg-[#1a1917] border-b border-[#2c2b29] px-4 py-3 sticky top-0 z-20">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-white font-black text-lg">
-              {addingMore ? '➕ إضافة للطلب' : `🍽️ طاولة ${table}`}
-            </div>
-            <div className="text-[#8a8884] text-xs">
-              {addingMore ? 'أضف أصناف جديدة فقط' : process.env.NEXT_PUBLIC_RESTAURANT_NAME || 'Restaurant Self Order'}
-            </div>
+            <div className="text-white font-black text-lg">{addingMore ? '➕ إضافة للطلب' : `🍽️ طاولة ${table}`}</div>
+            <div className="text-[#8a8884] text-xs">{addingMore ? 'أضف أصناف جديدة فقط' : (process.env.NEXT_PUBLIC_RESTAURANT_NAME || 'Restaurant Self Order')}</div>
           </div>
-          {addingMore && (
-            <button onClick={() => setAddingMore(false)} className="text-[#8a8884] text-sm px-3 py-1 rounded-lg border border-[#3a3936]">
-              إلغاء
-            </button>
-          )}
+          {addingMore && <button onClick={() => setAddingMore(false)} className="text-[#8a8884] text-sm px-3 py-1 rounded-lg border border-[#3a3936]">إلغاء</button>}
         </div>
       </div>
-
-      {/* Categories */}
-      <div className="flex gap-2 overflow-x-auto px-4 py-3 scrollbar-hide sticky top-[57px] bg-[#0f0e0d] z-10" style={{scrollbarWidth:'none'}}>
+      <div className="flex gap-2 overflow-x-auto px-4 py-3 sticky top-[57px] bg-[#0f0e0d] z-10" style={{scrollbarWidth:'none'}}>
         {CATEGORIES.map(cat => (
           <button key={cat.key} onClick={() => setActiveCategory(cat.key)}
-            className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold transition-all border ${
-              activeCategory === cat.key
-                ? 'bg-[#e74c3c] border-[#e74c3c] text-white'
-                : 'bg-[#1a1917] border-[#3a3936] text-[#8a8884] hover:text-white'
-            }`}>
-            <span>{cat.emoji}</span>
-            <span>{cat.label_ar}</span>
+            className={`flex-shrink-0 flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold transition-all border ${activeCategory === cat.key ? 'bg-[#e74c3c] border-[#e74c3c] text-white' : 'bg-[#1a1917] border-[#3a3936] text-[#8a8884] hover:text-white'}`}>
+            <span>{cat.emoji}</span><span>{cat.label_ar}</span>
           </button>
         ))}
       </div>
-
-      {/* Menu Items */}
       <div className="px-4 pb-4 grid grid-cols-1 gap-3">
         {filteredItems.map((item, i) => {
           const inCart = cart.find(c => c.menu_item_id === item.id)
           return (
-            <div key={item.id} className="bg-[#1a1917] border border-[#2c2b29] rounded-2xl p-4 flex items-center gap-3 animate-fade-up"
-              style={{ animationDelay: `${i * 40}ms` }}>
+            <div key={item.id} className="bg-[#1a1917] border border-[#2c2b29] rounded-2xl p-4 flex items-center gap-3 animate-fade-up" style={{ animationDelay: `${i * 40}ms` }}>
               <div className="text-4xl flex-shrink-0">{item.emoji}</div>
               <div className="flex-1 min-w-0">
                 <div className="text-white font-bold text-sm">{item.name_ar}</div>
@@ -301,34 +259,22 @@ function OrderPage() {
               <div className="flex-shrink-0">
                 {inCart ? (
                   <div className="flex items-center gap-2">
-                    <button onClick={() => changeQty(item.id, -1)}
-                      disabled={submitted && !addingMore}
-                      className="w-8 h-8 rounded-full bg-[#2a2927] border border-[#3a3936] text-white font-bold disabled:opacity-30 flex items-center justify-center">
-                      −
-                    </button>
+                    <button onClick={() => changeQty(item.id, -1)} disabled={submitted && !addingMore}
+                      className="w-8 h-8 rounded-full bg-[#2a2927] border border-[#3a3936] text-white font-bold disabled:opacity-30 flex items-center justify-center">−</button>
                     <span className="text-white font-black w-5 text-center">{inCart.qty}</span>
-                    <button onClick={() => addItem(item)}
-                      className="w-8 h-8 rounded-full bg-[#e74c3c] text-white font-bold flex items-center justify-center">
-                      +
-                    </button>
+                    <button onClick={() => addItem(item)} className="w-8 h-8 rounded-full bg-[#e74c3c] text-white font-bold flex items-center justify-center">+</button>
                   </div>
                 ) : (
-                  <button onClick={() => addItem(item)}
-                    className="w-10 h-10 rounded-full bg-[#e74c3c] hover:bg-[#c0392b] text-white font-black text-xl flex items-center justify-center transition-all active:scale-90">
-                    +
-                  </button>
+                  <button onClick={() => addItem(item)} className="w-10 h-10 rounded-full bg-[#e74c3c] hover:bg-[#c0392b] text-white font-black text-xl flex items-center justify-center transition-all active:scale-90">+</button>
                 )}
               </div>
             </div>
           )
         })}
       </div>
-
-      {/* Floating Cart Button */}
       {cartCount > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0f0e0d] to-transparent z-30">
-          <button onClick={() => addingMore ? submitAddMore() : setShowCart(true)}
-            disabled={loading}
+          <button onClick={() => addingMore ? submitAddMore() : setShowCart(true)} disabled={loading}
             className="w-full bg-[#e74c3c] hover:bg-[#c0392b] text-white font-black py-4 rounded-2xl flex items-center justify-between px-5 transition-all shadow-2xl disabled:opacity-60">
             <span className="bg-white/20 rounded-full w-7 h-7 flex items-center justify-center text-sm">{cartCount}</span>
             <span>{addingMore ? (loading ? 'جارٍ الإضافة...' : 'تأكيد الإضافة') : 'عرض الطلب'}</span>
@@ -336,15 +282,12 @@ function OrderPage() {
           </button>
         </div>
       )}
-
-      {/* Cart Sheet */}
       {showCart && (
         <div className="fixed inset-0 z-40 flex flex-col justify-end">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowCart(false)} />
           <div className="relative bg-[#1a1917] rounded-t-3xl p-5 max-h-[85dvh] overflow-y-auto animate-fade-up border-t border-[#3a3936]">
             <div className="w-12 h-1 bg-[#3a3936] rounded-full mx-auto mb-5" />
             <h2 className="text-white font-black text-xl mb-4">طلبك 🛒</h2>
-
             {cart.map(item => (
               <div key={item.menu_item_id} className="flex items-center gap-3 py-3 border-b border-[#2c2b29]">
                 <span className="text-2xl">{item.emoji}</span>
@@ -353,64 +296,37 @@ function OrderPage() {
                   <div className="text-[#f39c12] text-xs font-bold">${(item.price * item.qty).toFixed(2)}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => changeQty(item.menu_item_id, -1)}
-                    className="w-7 h-7 rounded-full bg-[#2a2927] border border-[#3a3936] text-white flex items-center justify-center text-sm">
-                    −
-                  </button>
+                  <button onClick={() => changeQty(item.menu_item_id, -1)} className="w-7 h-7 rounded-full bg-[#2a2927] border border-[#3a3936] text-white flex items-center justify-center text-sm">−</button>
                   <span className="text-white font-black w-4 text-center">{item.qty}</span>
-                  <button onClick={() => changeQty(item.menu_item_id, 1)}
-                    className="w-7 h-7 rounded-full bg-[#e74c3c] text-white flex items-center justify-center text-sm">
-                    +
-                  </button>
-                  <button onClick={() => removeItem(item.menu_item_id)}
-                    className="w-7 h-7 rounded-full bg-[#2a2927] text-[#8a8884] flex items-center justify-center text-xs mr-1">
-                    ✕
-                  </button>
+                  <button onClick={() => changeQty(item.menu_item_id, 1)} className="w-7 h-7 rounded-full bg-[#e74c3c] text-white flex items-center justify-center text-sm">+</button>
+                  <button onClick={() => removeItem(item.menu_item_id)} className="w-7 h-7 rounded-full bg-[#2a2927] text-[#8a8884] flex items-center justify-center text-xs mr-1">✕</button>
                 </div>
               </div>
             ))}
-
-            {/* Notes */}
             <div className="mt-4 mb-4">
               <label className="text-[#8a8884] text-xs font-bold mb-1.5 block">ملاحظات (اختياري)</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)}
-                placeholder="مثال: بدون بصل، حساسية من المكسرات..."
-                className="w-full bg-[#0f0e0d] border border-[#3a3936] rounded-xl p-3 text-white text-sm resize-none focus:border-[#e74c3c] outline-none"
-                rows={2} />
+              <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="مثال: بدون بصل، حساسية من المكسرات..." className="w-full bg-[#0f0e0d] border border-[#3a3936] rounded-xl p-3 text-white text-sm resize-none focus:border-[#e74c3c] outline-none" rows={2} />
             </div>
-
-            {/* Totals */}
             <div className="bg-[#0f0e0d] rounded-xl p-4 mb-4">
-              <div className="flex justify-between text-sm text-[#8a8884] mb-1.5">
-                <span>المجموع الجزئي</span><span>${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm text-[#8a8884] mb-3">
-                <span>ضريبة (10%)</span><span>${tax.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-black text-white text-lg border-t border-[#3a3936] pt-3">
-                <span>الإجمالي</span><span className="text-[#f39c12]">${total.toFixed(2)}</span>
-              </div>
+              <div className="flex justify-between text-sm text-[#8a8884] mb-1.5"><span>المجموع الجزئي</span><span>${subtotal.toFixed(2)}</span></div>
+              <div className="flex justify-between text-sm text-[#8a8884] mb-3"><span>ضريبة (10%)</span><span>${tax.toFixed(2)}</span></div>
+              <div className="flex justify-between font-black text-white text-lg border-t border-[#3a3936] pt-3"><span>الإجمالي</span><span className="text-[#f39c12]">${total.toFixed(2)}</span></div>
             </div>
-
-            <button onClick={submitOrder} disabled={loading || !cart.length}
-              className="w-full bg-[#e74c3c] hover:bg-[#c0392b] text-white font-black py-4 rounded-2xl text-lg transition-all disabled:opacity-60 active:scale-[0.98]">
+            <button onClick={submitOrder} disabled={loading || !cart.length} className="w-full bg-[#e74c3c] hover:bg-[#c0392b] text-white font-black py-4 rounded-2xl text-lg transition-all disabled:opacity-60 active:scale-[0.98]">
               {loading ? '⏳ جارٍ الإرسال...' : '🚀 إرسال الطلب'}
             </button>
           </div>
         </div>
       )}
-
-      {toast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-[#e8e6e1] text-[#0f0e0d] px-5 py-3 rounded-full font-bold text-sm z-50 shadow-xl animate-fade-up whitespace-nowrap">
-          {toast}
-        </div>
-      )}
+      {toast && <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-[#e8e6e1] text-[#0f0e0d] px-5 py-3 rounded-full font-bold text-sm z-50 shadow-xl animate-fade-up whitespace-nowrap">{toast}</div>}
     </div>
   )
 }
 
 export default function OrderPageWrapper() {
-  return <Suspense fallback={<div className="min-h-dvh bg-[#0f0e0d] flex items-center justify-center text-white">جارٍ التحميل...</div>}>
-    <OrderPage />
-  </Suspense>
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-[#0f0e0d] flex items-center justify-center text-white">جارٍ التحميل...</div>}>
+      <OrderPage />
+    </Suspense>
+  )
 }

@@ -30,8 +30,8 @@ export async function POST(req: NextRequest) {
     if (error) throw error
 
     return NextResponse.json({ order: data }, { status: 201 })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }
 
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     if (error) throw error
 
     return NextResponse.json({ orders: data })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 })
+  } catch (err: unknown) {
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }

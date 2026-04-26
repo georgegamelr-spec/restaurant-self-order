@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 const TABLES = Array.from({ length: 20 }, (_, i) => i + 1)
 
-declare global { interface Window { QRCode: any } }
+declare global { interface Window { QRCode: { new(el: HTMLElement, opts: Record<string, unknown>): void; CorrectLevel?: Record<string, unknown> } } }
 
 export default function QRCodesPage() {
   const [baseUrl, setBaseUrl] = useState('')
