@@ -10,6 +10,7 @@ export interface MenuItem {
   description_ar: string
   category: 'starters' | 'mains' | 'drinks' | 'desserts'
   available: boolean
+  image?: string
 }
 
 export interface OrderItem {

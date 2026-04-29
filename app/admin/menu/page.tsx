@@ -20,7 +20,7 @@ export default function MenuPage() {
   )
 
   const openEdit = (item: MenuItem) => { setEditing(item); setForm({...item}); setAdding(false) }
-  const openAdd = () => { setEditing(null); setAdding(true); setForm({ category: activeCategory !== 'all' ? activeCategory : 'starters', available: true, price: 0 }) }
+  const openAdd = () => { setEditing(null); setAdding(true); setForm({ category: (activeCategory !== 'all' ? activeCategory : 'starters') as MenuItem['category'], available: true, price: 0 }) }
 
   const save = () => {
     if (!form.name_ar || !form.price) { showToast('❌ أدخل الاسم والسعر'); return }
