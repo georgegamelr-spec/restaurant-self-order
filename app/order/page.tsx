@@ -180,22 +180,34 @@ function OrderPage() {
   // ── Submit addMore (only truly new items)
   const submitAddMore = async () => {
     if (!orderId) return
-    // New items = items in cart that are NOT in lockedQty
-    const newItems = cart.filter(i => lockedQty[i.menu_item_id] === undefined)
-    if (!newItems.length) { setAddingMore(false); return }
+    // Items to send:
+    // 1. Brand new items (not in lockedQty)
+    // 2. Locked items whose qty was INCREASED (send the diff as qty)
+    const itemsToSend: OrderItem[] = []
+    cart.forEach(i => {
+      const minQty = lockedQty[i.menu_item_id]
+      if (minQty === undefined) {
+        // New item — send full qty
+        itemsToSend.push(i)
+      } else if (i.qty > minQty) {
+        // Locked item increased — send only the diff
+        itemsToSend.push({ ...i, qty: i.qty - minQty })
+      }
+    })
+    if (!itemsToSend.length) { setAddingMore(false); return }
     setLoading(true)
     try {
       const r = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'add_items', items: newItems, session_id: getSession(table) }),
+        body: JSON.stringify({ action: 'add_items', items: itemsToSend, session_id: getSession(table) }),
       })
       const d = await r.json() as { order?: OrderData; error?: string }
       if (!r.ok) throw new Error(d.error || 'Error')
 
-      // Lock the newly added items too
+      // Update locked qty for all items in the confirmed order
       const newLocked = { ...lockedQty }
-      newItems.forEach(i => { newLocked[i.menu_item_id] = i.qty })
+      d.order!.items.forEach((i: OrderItem) => { newLocked[i.menu_item_id] = i.qty })
 
       setCart(d.order!.items)
       setLockedQty(newLocked)
@@ -210,7 +222,10 @@ function OrderPage() {
 
   // ── Cancel addMore: remove any unlocked items from cart
   const cancelAddMore = () => {
-    const restored = cart.filter(i => lockedQty[i.menu_item_id] !== undefined)
+    // Restore cart: keep locked items at their locked qty, remove new unlocked items
+    const restored = cart
+      .filter(i => lockedQty[i.menu_item_id] !== undefined)
+      .map(i => ({ ...i, qty: lockedQty[i.menu_item_id] }))
     setCart(restored)
     save(table, { cart: restored, orderId, submitted, lockedQty })
     setAddingMore(false)
@@ -318,17 +333,34 @@ function OrderPage() {
           const isLocked = lockedQty[item.id] !== undefined // was in a previous submitted order
           const atMin = inCart ? !canDecrease(item.id, inCart.qty) : true
 
-          // During addingMore: locked items are display-only (can't modify them here)
+          // During addingMore: locked items CAN be increased but NOT decreased below lockedQty
           if (addingMore && isLocked) {
             return (
-              <div key={item.id} className="bg-[#1a1917] border border-[#2c2b29] rounded-2xl p-4 flex items-center gap-3 opacity-50">
+              <div key={item.id} className="bg-[#1a1917] border border-[#2c2b29] rounded-2xl p-4 flex items-center gap-3">
                 <div className="text-4xl flex-shrink-0">{item.emoji}</div>
                 <div className="flex-1 min-w-0">
                   <div className="text-white font-bold text-sm">{item.name_ar}</div>
                   <div className="text-[#5a5957] text-xs mt-0.5 truncate">{item.description_ar}</div>
-                  <div className="text-[#f39c12] font-black mt-1">${item.price.toFixed(2)}</div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[#f39c12] font-black">${item.price.toFixed(2)}</span>
+                    <span className="text-[#5a5957] text-xs bg-[#2a2927] px-2 py-0.5 rounded-full">مرسل ✓</span>
+                  </div>
                 </div>
-                <span className="text-[#5a5957] text-xs bg-[#2a2927] px-2 py-1 rounded-lg">مرسل x{inCart?.qty}</span>
+                <div className="flex-shrink-0">
+                  {inCart ? (
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => changeQty(item.id, -1)}
+                        disabled={atMin}
+                        className="w-8 h-8 rounded-full bg-[#2a2927] border border-[#3a3936] text-white font-bold disabled:opacity-20 flex items-center justify-center active:scale-90 transition-all">−</button>
+                      <span className="text-white font-black w-5 text-center">{inCart.qty}</span>
+                      <button onClick={() => addItem(item)}
+                        className="w-8 h-8 rounded-full bg-[#e74c3c] text-white font-bold flex items-center justify-center active:scale-90 transition-all">+</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => addItem(item)}
+                      className="w-10 h-10 rounded-full bg-[#e74c3c] hover:bg-[#c0392b] text-white font-black text-xl flex items-center justify-center transition-all active:scale-90">+</button>
+                  )}
+                </div>
               </div>
             )
           }
