@@ -17,9 +17,13 @@ export default function Home() {
           className="bg-[#1f1e1c] hover:bg-[#2a2927] border border-[#3a3936] text-white font-bold py-4 px-6 rounded-2xl text-center transition-all text-lg">
           👨‍🍳 Kitchen Display
         </Link>
-        <Link href="/admin/qr-codes"
+        <Link href="/qr"
           className="bg-[#1f1e1c] hover:bg-[#2a2927] border border-[#3a3936] text-white font-bold py-4 px-6 rounded-2xl text-center transition-all text-lg">
           🔲 توليد QR Codes
+        </Link>
+        <Link href="/admin/login"
+          className="bg-[#1f1e1c] hover:bg-[#2a2927] border border-[#3a3936] text-white font-bold py-4 px-6 rounded-2xl text-center transition-all text-lg">
+          🔐 لوحة التحكم (Dashboard)
         </Link>
       </div>
     </main>
