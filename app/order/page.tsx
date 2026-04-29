@@ -22,18 +22,17 @@ interface Snapshot {
   cart: OrderItem[]
   orderId: string | null
   submitted: boolean
-  // The minimum qty per item_id that was locked at submit time
-  // e.g. { 'm1': 2 } means the customer ordered 2 of m1, can't go below 2
   lockedQty: Record<string, number>
+  guestCount: number | null
 }
 
 function load(table: string): Snapshot {
-  if (typeof window === 'undefined') return { cart: [], orderId: null, submitted: false, lockedQty: {} }
+  if (typeof window === 'undefined') return { cart: [], orderId: null, submitted: false, lockedQty: {}, guestCount: null }
   try {
     const raw = sessionStorage.getItem(`snap_${table}`)
     if (raw) return JSON.parse(raw) as Snapshot
   } catch {}
-  return { cart: [], orderId: null, submitted: false, lockedQty: {} }
+  return { cart: [], orderId: null, submitted: false, lockedQty: {}, guestCount: null }
 }
 function save(table: string, snap: Snapshot) {
   if (typeof window === 'undefined') return
@@ -68,6 +67,7 @@ function OrderPage() {
   const [loading, setLoading]         = useState(false)
   const [showCart, setShowCart]       = useState(false)
   const [addingMore, setAddingMore]   = useState(false)
+  const [guestCount, setGuestCount]   = useState<number | null>(null)
   const [activeCategory, setActiveCategory] = useState('starters')
   const [toast, setToast]             = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -79,6 +79,7 @@ function OrderPage() {
     setOrderId(snap.orderId)
     setSubmitted(snap.submitted)
     setLockedQty(snap.lockedQty)
+    setGuestCount(snap.guestCount ?? null)
   }, [table])
 
   // ── Poll order status
@@ -116,7 +117,7 @@ function OrderPage() {
       const updated = existing
         ? prev.map(i => i.menu_item_id === item.id ? { ...i, qty: i.qty + 1 } : i)
         : [...prev, { menu_item_id: item.id, name: item.name, name_ar: item.name_ar, emoji: item.emoji, price: item.price, qty: 1 }]
-      save(table, { cart: updated, orderId, submitted, lockedQty })
+      save(table, { cart: updated, orderId, submitted, lockedQty, guestCount })
       return updated
     })
     showToast(`✅ أُضيف: ${item.name_ar}`)
@@ -141,7 +142,7 @@ function OrderPage() {
     if (!canRemove(id)) return // 🔒 blocked
     setCart(prev => {
       const updated = prev.filter(i => i.menu_item_id !== id)
-      save(table, { cart: updated, orderId, submitted, lockedQty })
+      save(table, { cart: updated, orderId, submitted, lockedQty, guestCount })
       return updated
     })
   }
@@ -154,7 +155,7 @@ function OrderPage() {
       const r = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ table_number: table, session_id: getSession(table), items: cart, notes }),
+        body: JSON.stringify({ table_number: table, session_id: getSession(table), items: cart, notes, guest_count: guestCount }),
       })
       const d = await r.json() as { order?: OrderData; error?: string }
       if (!r.ok) throw new Error(d.error || 'Error')
@@ -169,7 +170,7 @@ function OrderPage() {
       setOrderStatus('submitted')
       setLockedQty(newLocked)
       setShowCart(false)
-      save(table, { cart, orderId: newOrderId, submitted: true, lockedQty: newLocked })
+      save(table, { cart, orderId: newOrderId, submitted: true, lockedQty: newLocked, guestCount })
       showToast('🎉 تم إرسال طلبك!')
     } catch (e: unknown) {
       showToast('❌ خطأ: ' + (e as Error).message)
@@ -212,7 +213,7 @@ function OrderPage() {
       setCart(d.order!.items)
       setLockedQty(newLocked)
       setAddingMore(false)
-      save(table, { cart: d.order!.items, orderId, submitted: true, lockedQty: newLocked })
+      save(table, { cart: d.order!.items, orderId, submitted: true, lockedQty: newLocked, guestCount })
       showToast('✅ تمت الإضافة!')
     } catch (e: unknown) {
       showToast('❌ خطأ: ' + (e as Error).message)
@@ -227,7 +228,7 @@ function OrderPage() {
       .filter(i => lockedQty[i.menu_item_id] !== undefined)
       .map(i => ({ ...i, qty: lockedQty[i.menu_item_id] }))
     setCart(restored)
-    save(table, { cart: restored, orderId, submitted, lockedQty })
+    save(table, { cart: restored, orderId, submitted, lockedQty, guestCount })
     setAddingMore(false)
   }
 
@@ -300,6 +301,48 @@ function OrderPage() {
     )
   }
 
+  // ─── Guest count screen (shown before menu if guestCount not set)
+  if (guestCount === null) {
+    return (
+      <div className="min-h-dvh bg-[#0f0e0d] flex flex-col items-center justify-center p-6" dir="rtl">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-8">
+            <div className="text-6xl mb-4">🍽️</div>
+            <h1 className="text-white font-black text-2xl mb-1">{process.env.NEXT_PUBLIC_RESTAURANT_NAME || 'Restaurant'}</h1>
+            <p className="text-[#8a8884] text-sm">طاولة رقم {table}</p>
+          </div>
+          <div className="bg-[#1a1917] border border-[#2c2b29] rounded-3xl p-6">
+            <h2 className="text-white font-black text-lg mb-1 text-center">أهلاً وسهلاً! 👋</h2>
+            <p className="text-[#8a8884] text-sm text-center mb-6">كم عدد الأفراد على طاولتك؟</p>
+            <div className="grid grid-cols-4 gap-3 mb-6">
+              {[1,2,3,4,5,6,7,8].map(n => (
+                <button key={n} onClick={() => {
+                  setGuestCount(n)
+                  save(table, { cart, orderId, submitted, lockedQty, guestCount: n })
+                }}
+                  className="aspect-square rounded-2xl bg-[#2a2927] border border-[#3a3936] text-white font-black text-xl hover:bg-[#e74c3c] hover:border-[#e74c3c] transition-all active:scale-90">
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-[#8a8884] text-sm whitespace-nowrap">أكثر من 8؟</span>
+              <div className="flex items-center gap-2 flex-1">
+                <button onClick={() => {
+                  const n = parseInt(prompt('أدخل عدد الأفراد:') || '0')
+                  if (n > 0) { setGuestCount(n); save(table, { cart, orderId, submitted, lockedQty, guestCount: n }) }
+                }}
+                  className="flex-1 bg-[#2a2927] border border-[#3a3936] text-[#8a8884] font-bold py-3 rounded-xl text-sm hover:border-white hover:text-white transition-all">
+                  أدخل العدد يدوياً
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // ─── Menu screen (before submit OR during addingMore)
   return (
     <div className="min-h-dvh bg-[#0f0e0d] flex flex-col pb-28" dir="rtl">
@@ -307,7 +350,7 @@ function OrderPage() {
       <div className="bg-[#1a1917] border-b border-[#2c2b29] px-4 py-3 sticky top-0 z-20 flex items-center justify-between">
         <div>
           <div className="text-white font-black text-lg">{addingMore ? '➕ إضافة للطلب' : `🍽️ طاولة ${table}`}</div>
-          <div className="text-[#8a8884] text-xs">{addingMore ? 'يمكنك إضافة أصناف جديدة فقط' : (process.env.NEXT_PUBLIC_RESTAURANT_NAME || 'Restaurant')}</div>
+          <div className="text-[#8a8884] text-xs">{addingMore ? 'يمكنك إضافة أصناف جديدة' : `${process.env.NEXT_PUBLIC_RESTAURANT_NAME || 'Restaurant'} · ${guestCount} أفراد`}</div>
         </div>
         {addingMore && (
           <button onClick={cancelAddMore} className="text-[#8a8884] text-sm px-3 py-1.5 rounded-xl border border-[#3a3936] hover:border-white transition-all">
