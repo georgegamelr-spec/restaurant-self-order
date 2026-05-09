@@ -5,6 +5,7 @@ import { AdminUser, ROLE_LABELS, canAccess } from '@/lib/auth'
 
 const NAV = [
   { key: 'dashboard',  href: '/admin/dashboard',  emoji: '📊', label: 'الرئيسية' },
+  { key: 'reports',    href: '/admin/reports',     emoji: '📈', label: 'التقارير' },
   { key: 'orders',     href: '/admin/orders',      emoji: '🧾', label: 'الطلبات' },
   { key: 'menu',       href: '/admin/menu',        emoji: '🍽️', label: 'المنيو' },
   { key: 'inventory',  href: '/admin/inventory',   emoji: '📦', label: 'المخزون' },
