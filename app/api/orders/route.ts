@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { OrderItem } from '@/types'
 
-// POST /api/orders — create new order
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { table_number, session_id, items, notes } = body
+    const { table_number, session_id, items, notes, guest_count, source } = body
 
     if (!table_number || !session_id || !items?.length) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -23,6 +22,8 @@ export async function POST(req: NextRequest) {
         notes: notes || '',
         status: 'submitted',
         total: Math.round(total * 100) / 100,
+        guest_count: guest_count || 1,
+        source: source || 'customer',
       })
       .select()
       .single()
@@ -35,7 +36,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET /api/orders — get all orders (for kitchen)
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
@@ -58,3 +58,4 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 })
   }
 }
+
