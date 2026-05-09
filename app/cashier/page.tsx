@@ -45,8 +45,33 @@ export default function CashierPage() {
   const [cancelError, setCancelError]       = useState('')
   const [cancelLoading, setCancelLoading]   = useState(false)
   const [lastOrderId, setLastOrderId]       = useState<string | null>(null)
+  const [existingOrderId, setExistingOrderId] = useState<string | null>(null)
+  const [tableLoading, setTableLoading]       = useState(false)
 
   useEffect(() => { loadProducts() }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadTableOrder(selectedTable) }, [selectedTable])
+
+  const loadTableOrder = async (table: number) => {
+    setTableLoading(true)
+    setCart([])
+    setExistingOrderId(null)
+    try {
+      const res = await fetch('/api/orders?table=' + table + '&status=submitted')
+      const data = await res.json()
+      const orders = (data.orders || []) as Array<{id: string; table_number: string; status: string; items: Array<{product_id?: string; menu_item_id: string; name: string; name_ar: string; emoji: string; price: number; qty: number}>}>
+      const latest = orders.find(o => o.table_number === String(table) && o.status === 'submitted')
+      if (latest) {
+        setExistingOrderId(latest.id)
+        setLastOrderId(latest.id)
+        setCart(latest.items.map(item => ({
+          ...item,
+          product_id: item.product_id || item.menu_item_id,
+        })))
+      }
+    } catch (_) {}
+    setTableLoading(false)
+  }
 
   const loadProducts = async () => {
     const { data } = await supabase
@@ -166,7 +191,7 @@ export default function CashierPage() {
             <span className="text-[#8a8884] text-sm">🪑</span>
             <div className="flex items-center gap-1 bg-[#2a2927] rounded-xl p-1">
               <button onClick={() => setTable(t => Math.max(1, t-1))} className="w-7 h-7 rounded-lg bg-[#3a3937] text-white font-black text-base hover:bg-[#4a4947] transition-all flex items-center justify-center">−</button>
-              <span className="text-white font-black text-lg min-w-[2.5rem] text-center">طاولة {selectedTable}</span>
+              <span className="text-white font-black text-lg min-w-[2.5rem] text-center">{tableLoading ? "⏳" : existingOrderId ? "🟢 " : ""} طاولة {selectedTable}</span>
               <button onClick={() => setTable(t => Math.min(20, t+1))} className="w-7 h-7 rounded-lg bg-[#e67e22] text-white font-black text-base hover:bg-[#f39c12] transition-all flex items-center justify-center">+</button>
             </div>
           </div>
