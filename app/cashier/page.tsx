@@ -162,15 +162,13 @@ export default function CashierPage() {
         </div>
         <div className="flex items-center gap-3">
           {/* Table selector */}
-          <div className="flex items-center gap-2 bg-[#2a2927] rounded-xl px-3 py-2">
-            <span className="text-[#8a8884] text-sm">🪑 طاولة</span>
-            <select
-              value={selectedTable}
-              onChange={e => setTable(Number(e.target.value))}
-              className="bg-transparent text-white font-black text-sm outline-none"
-            >
-              {TABLES.map(t => <option key={t} value={t} className="bg-[#1a1917]">{t}</option>)}
-            </select>
+          <div className="flex items-center gap-2">
+            <span className="text-[#8a8884] text-sm">🪑</span>
+            <div className="flex items-center gap-1 bg-[#2a2927] rounded-xl p-1">
+              <button onClick={() => setTable(t => Math.max(1, t-1))} className="w-7 h-7 rounded-lg bg-[#3a3937] text-white font-black text-base hover:bg-[#4a4947] transition-all flex items-center justify-center">−</button>
+              <span className="text-white font-black text-lg min-w-[2.5rem] text-center">طاولة {selectedTable}</span>
+              <button onClick={() => setTable(t => Math.min(20, t+1))} className="w-7 h-7 rounded-lg bg-[#e67e22] text-white font-black text-base hover:bg-[#f39c12] transition-all flex items-center justify-center">+</button>
+            </div>
           </div>
           {/* Cancel last order */}
           {lastOrderId && (
