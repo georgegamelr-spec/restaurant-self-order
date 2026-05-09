@@ -1,4 +1,4 @@
-export type OrderStatus = 'draft' | 'submitted' | 'preparing' | 'ready' | 'done'
+export type OrderStatus = 'draft' | 'submitted' | 'preparing' | 'ready' | 'done' | 'cancelled'
 
 export interface MenuItem {
   id: string
@@ -30,6 +30,9 @@ export interface Order {
   status: OrderStatus
   notes?: string
   total: number
+  cancel_reason?: string
+  cancelled_by?: string
+  cancelled_at?: string
   created_at: string
   updated_at: string
 }
