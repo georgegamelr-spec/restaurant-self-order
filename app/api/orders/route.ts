@@ -5,7 +5,7 @@ import { OrderItem } from '@/types'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { table_number, session_id, items, notes, guest_count, source } = body
+    const { table_number, session_id, items, notes } = body
 
     if (!table_number || !session_id || !items?.length) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -22,8 +22,6 @@ export async function POST(req: NextRequest) {
         notes: notes || '',
         status: 'submitted',
         total: Math.round(total * 100) / 100,
-        guest_count: guest_count || 1,
-        source: source || 'customer',
       })
       .select()
       .single()
