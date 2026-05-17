@@ -437,6 +437,7 @@ function OrderPage() {
                 <div className="text-white font-bold text-sm">{item.name_ar}</div>
                 <div className="text-[#5a5957] text-xs mt-0.5 truncate">{item.description_ar}</div>
                 <div className="text-[#f39c12] font-black mt-1">${item.price.toFixed(2)}</div>
+                <button onClick={() => router.push(`/order/product/${item.id}?table=${table}`)} className="text-[#5a5957] hover:text-[#8a8884] text-[11px] underline underline-offset-2 mt-0.5 transition-colors">التفاصيل ←</button>
               </div>
               <div className="flex-shrink-0">
                 {inCart ? (
