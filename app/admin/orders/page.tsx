@@ -43,6 +43,7 @@ export default function OrdersAdminPage() {
   const [cancelReason, setCancelReason]   = useState(CANCEL_REASONS[0])
   const [cancelError, setCancelError]     = useState('')
   const [cancelLoading, setCancelLoading] = useState(false)
+  const [tableFilter, setTableFilter] = useState<string>('all')
 
   useEffect(() => {
     loadOrders()
@@ -108,7 +109,19 @@ export default function OrdersAdminPage() {
     loadOrders()
   }
 
-  const filtered = orders.filter(o => filter === 'all' || o.status === filter)
+
+  // ── Quick table filter: طاولات فيها طلبات نشطة فقط
+  const activeTables = [...new Set(
+    orders
+      .filter(o => ['submitted', 'preparing', 'ready'].includes(o.status))
+      .map(o => o.table_number)
+  )].sort((a, b) => Number(a) - Number(b))
+
+  const filteredOrders = orders.filter(o => {
+    const statusMatch = filter === 'all' || o.status === filter
+    const tableMatch  = tableFilter === 'all' || o.table_number === tableFilter
+    return statusMatch && tableMatch
+  })
   const totals = {
     all:       orders.length,
     submitted: orders.filter(o => o.status === 'submitted').length,
@@ -165,6 +178,36 @@ export default function OrdersAdminPage() {
         ))}
       </div>
 
+
+      {/* Quick Table Filter — تظهر فقط لو في طاولات نشطة */}
+      {activeTables.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mt-2">
+          <button
+            onClick={() => setTableFilter('all')}
+            className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+              tableFilter === 'all'
+                ? 'bg-[#e74c3c] text-white border-[#e74c3c]'
+                : 'bg-[#1a1917] text-[#8a8884] border-[#3a3936]'
+            }`}
+          >
+            🪑 كل الطاولات
+          </button>
+          {activeTables.map(t => (
+            <button
+              key={t}
+              onClick={() => setTableFilter(t === tableFilter ? 'all' : t)}
+              className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                tableFilter === t
+                  ? 'bg-[#f39c12] text-black border-[#f39c12]'
+                  : 'bg-[#3d2e0a] text-[#f39c12] border-[#f39c12]/30 hover:border-[#f39c12]/60'
+              }`}
+            >
+              طاولة {t}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Orders list */}
       {loading ? (
         <div className="space-y-3">
@@ -174,7 +217,7 @@ export default function OrdersAdminPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(order => {
+          {filteredOrders.map(order => {
             const cfg = STATUS_CONFIG[order.status] || STATUS_CONFIG.submitted
             return (
               <div
@@ -221,7 +264,7 @@ export default function OrdersAdminPage() {
               </div>
             )
           })}
-          {!filtered.length && (
+          {!filteredOrders.length && (
             <div className="text-center text-[#8a8884] py-16 text-lg">لا توجد طلبات</div>
           )}
         </div>
