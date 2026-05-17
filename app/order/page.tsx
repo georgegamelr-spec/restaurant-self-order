@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef, Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { MenuItem, OrderItem } from '@/types'
 import { MENU_ITEMS, CATEGORIES } from '@/lib/menu'
 
@@ -56,6 +56,28 @@ interface OrderData { id: string; items: OrderItem[]; status: string; total: num
 function OrderPage() {
   const params = useSearchParams()
   const table = params.get('table') || '1'
+
+  const router = useRouter()
+
+  // Handle add-from-product-detail (?add=itemId)
+  useEffect(() => {
+    const addId = params.get('add')
+    if (addId) {
+      const snap = load(table)
+      const found = MENU_ITEMS.find(m => m.id === addId)
+      if (found) {
+        const existing = snap.cart.find(i => i.menu_item_id === addId)
+        const updated = existing
+          ? snap.cart.map(i => i.menu_item_id === addId ? { ...i, qty: i.qty + 1 } : i)
+          : [...snap.cart, { menu_item_id: found.id, name: found.name, name_ar: found.name_ar, emoji: found.emoji, price: found.price, qty: 1 }]
+        setCart(updated)
+        save(table, { ...snap, cart: updated })
+        showToast(`✅ أُضيف: ${found.name_ar}`)
+      }
+      window.history.replaceState({}, '', `/order?table=${table}`)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const [cart, setCart]               = useState<OrderItem[]>([])
   const [orderId, setOrderId]         = useState<string | null>(null)
