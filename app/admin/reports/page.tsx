@@ -37,14 +37,16 @@ export default function ReportsPage(){
   const [to,setTo]           = useState(today())
   const [loading,setLoading] = useState(true)
   const [tab,setTab]         = useState<'sales'|'items'|'cancels'|'tables'>('sales')
+  const [fromTime,setFromTime] = useState('00:00')
+  const [toTime,setToTime]     = useState('23:59')
 
-  useEffect(()=>{load()},[range,from,to])
+  useEffect(()=>{load()},[range,from,to,fromTime,toTime])
 
   const load = async()=>{
     setLoading(true)
     try{
       const url = range==='custom'
-        ? `/api/reports?from=${from}&to=${to}`
+        ? `/api/reports?from=${from}&to=${to}&fromTime=${fromTime}&toTime=${toTime}`
         : `/api/reports?range=${range}`
       const res = await fetch(url)
       const d   = await res.json()
@@ -79,7 +81,7 @@ export default function ReportsPage(){
   const maxTable = data?Math.max(...data.tableBreakdown.map(t=>t.total),1):1
 
   const periodLabel = ()=>{
-    if(range==='custom') return `${from} → ${to}`
+    if(range==='custom') return `${from} ${fromTime} → ${to} ${toTime}`
     return QUICK.find(q=>q.key===range)?.label||''
   }
 
@@ -108,16 +110,48 @@ export default function ReportsPage(){
           ))}
         </div>
         {range==='custom'&&(
-          <div className="flex flex-col sm:flex-row gap-3 mt-3 pt-3 border-t border-[#2c2b29]">
-            <div className="flex items-center gap-3 flex-1">
-              <label className="text-[#8a8884] text-xs font-bold whitespace-nowrap">من تاريخ</label>
-              <input type="date" value={from} onChange={e=>setFrom(e.target.value)} max={to}
-                className="flex-1 bg-[#0f0e0d] border border-[#3a3936] rounded-xl px-4 py-2.5 text-white text-sm focus:border-[#e67e22] outline-none [color-scheme:dark]"/>
+          <div className="mt-3 pt-3 border-t border-[#2c2b29] space-y-3">
+            {/* Date Row */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex items-center gap-3 flex-1">
+                <label className="text-[#8a8884] text-xs font-bold whitespace-nowrap w-16">📅 من</label>
+                <input type="date" value={from} onChange={e=>setFrom(e.target.value)} max={to}
+                  className="flex-1 bg-[#0f0e0d] border border-[#3a3936] rounded-xl px-4 py-2.5 text-white text-sm focus:border-[#e67e22] outline-none [color-scheme:dark]"/>
+              </div>
+              <div className="flex items-center gap-3 flex-1">
+                <label className="text-[#8a8884] text-xs font-bold whitespace-nowrap w-16">📅 إلى</label>
+                <input type="date" value={to} onChange={e=>setTo(e.target.value)} min={from} max={today()}
+                  className="flex-1 bg-[#0f0e0d] border border-[#3a3936] rounded-xl px-4 py-2.5 text-white text-sm focus:border-[#e67e22] outline-none [color-scheme:dark]"/>
+              </div>
             </div>
-            <div className="flex items-center gap-3 flex-1">
-              <label className="text-[#8a8884] text-xs font-bold whitespace-nowrap">إلى تاريخ</label>
-              <input type="date" value={to} onChange={e=>setTo(e.target.value)} min={from} max={today()}
-                className="flex-1 bg-[#0f0e0d] border border-[#3a3936] rounded-xl px-4 py-2.5 text-white text-sm focus:border-[#e67e22] outline-none [color-scheme:dark]"/>
+            {/* Time Row */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex items-center gap-3 flex-1">
+                <label className="text-[#8a8884] text-xs font-bold whitespace-nowrap w-16">⏰ وقت البداية</label>
+                <input type="time" value={fromTime} onChange={e=>setFromTime(e.target.value)}
+                  className="flex-1 bg-[#0f0e0d] border border-[#3a3936] rounded-xl px-4 py-2.5 text-white text-sm focus:border-[#e67e22] outline-none [color-scheme:dark]"/>
+              </div>
+              <div className="flex items-center gap-3 flex-1">
+                <label className="text-[#8a8884] text-xs font-bold whitespace-nowrap w-16">⏰ وقت النهاية</label>
+                <input type="time" value={toTime} onChange={e=>setToTime(e.target.value)}
+                  className="flex-1 bg-[#0f0e0d] border border-[#3a3936] rounded-xl px-4 py-2.5 text-white text-sm focus:border-[#e67e22] outline-none [color-scheme:dark]"/>
+              </div>
+            </div>
+            {/* Quick time presets */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <span className="text-[#5a5957] text-xs self-center">⚡ فترات سريعة:</span>
+              {[
+                {l:'الفطار 6-11',f:'06:00',t:'11:00'},
+                {l:'الغداء 12-16',f:'12:00',t:'16:00'},
+                {l:'العشاء 18-23',f:'18:00',t:'23:00'},
+                {l:'وردية كاملة',f:'00:00',t:'23:59'},
+              ].map(p=>(
+                <button key={p.l}
+                  onClick={()=>{setFromTime(p.f);setToTime(p.t)}}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${fromTime===p.f&&toTime===p.t?'bg-[#e67e22] border-[#e67e22] text-white':'bg-[#242321] border-[#2c2b29] text-[#8a8884] hover:text-white'}`}>
+                  {p.l}
+                </button>
+              ))}
             </div>
           </div>
         )}
