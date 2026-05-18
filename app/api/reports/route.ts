@@ -18,9 +18,14 @@ export async function GET(req: NextRequest) {
     let to: Date = new Date(now)
     to.setHours(23,59,59,999)
 
+    const fromTime = searchParams.get('fromTime') || '00:00'
+    const toTime   = searchParams.get('toTime')   || '23:59'
+
     if (fromParam && toParam) {
-      from = new Date(fromParam); from.setHours(0,0,0,0)
-      to   = new Date(toParam);   to.setHours(23,59,59,999)
+      const [fh, fm] = fromTime.split(':').map(Number)
+      const [th, tm] = toTime.split(':').map(Number)
+      from = new Date(fromParam); from.setHours(fh, fm, 0, 0)
+      to   = new Date(toParam);   to.setHours(th, tm, 59, 999)
     } else if (range === 'today') {
       from = new Date(now); from.setHours(0,0,0,0)
     } else if (range === 'yesterday') {
